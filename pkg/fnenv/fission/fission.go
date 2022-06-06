@@ -122,6 +122,7 @@ func (fe *FunctionEnv) Invoke(spec *types.TaskInvocationSpec, opts ...fnenv.Invo
 	}
 	maxAttempts := 12 // About 6 min
 	ctx, cancel := context.WithDeadline(cfg.Ctx, deadline)
+	log.Info(ctx)
 	for attempt := range (&backoff.Instance{
 		MaxRetries:         maxAttempts,
 		BaseRetryDuration:  100 * time.Millisecond,
@@ -135,6 +136,7 @@ func (fe *FunctionEnv) Invoke(spec *types.TaskInvocationSpec, opts ...fnenv.Invo
 		log.Debugf("Failed to execute Fission function at %s (%d/%d): %v", fnUrl, err, attempt, maxAttempts)
 	}
 	cancel()
+	timeFinish := time.Now()
 
 	// Check if max try attempts was exceeded
 	if resp == nil {
@@ -143,8 +145,8 @@ func (fe *FunctionEnv) Invoke(spec *types.TaskInvocationSpec, opts ...fnenv.Invo
 	span.LogKV("status code", resp.Status)
 
 	fnenv.FnActive.WithLabelValues(Name).Dec()
+	ctxLog.Infof("Fission function response: %d - %s, TOOK %v", resp.StatusCode, resp.Header.Get("Content-Type"), timeFinish.Sub(timeStart))
 
-	ctxLog.Infof("Fission function response: %d - %s", resp.StatusCode, resp.Header.Get("Content-Type"))
 	if logrus.GetLevel() == logrus.DebugLevel {
 		fmt.Println("--- HTTP Response ---")
 		bs, err := httputil.DumpResponse(resp, true)

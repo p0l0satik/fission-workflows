@@ -1,0 +1,51 @@
+apiVersion: 1
+output: Out
+tasks:
+  Map1:
+    run: map2-1
+    inputs: 
+      body: "{ $.Invocation.Inputs.default }"
+
+  Map2:
+    run: map2-2
+    inputs: 
+      body: "{ $.Invocation.Inputs.default }"
+
+  Combine1:
+    run: combine
+    inputs: 
+      body: "{ $.Tasks.Map1.Output }"
+    requires:
+      - Map1
+
+  Combine2:
+    run: combine
+    inputs: 
+      body: "{ $.Tasks.Map2.Output }"
+    requires:
+      - Map2
+  
+  Shuffle:
+    run: shuffle
+    inputs: "{ output('Combine1') + ',' + output('Combine2')}"
+    requires:
+      - Combine2
+      - Combine1
+
+  Reduce1:
+    run: reduce2-1
+    inputs: "{ output('Shuffle') }"
+    requires:
+      - Shuffle
+
+  Reduce2:
+    run: reduce2-2
+    inputs: "{ output('Shuffle') }"
+    requires:
+      - Shuffle
+  Out:
+    run: compose
+    inputs: "{ output('Reduce1') + ', ' + output('Reduce2')}"
+    requires:
+    - Reduce1
+    - Reduce2

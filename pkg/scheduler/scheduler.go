@@ -27,7 +27,7 @@ var (
 )
 
 type Policy interface {
-	Evaluate(invocation *types.WorkflowInvocation) (*Schedule, error)
+	Evaluate(invocation *types.WorkflowInvocation, sheduled map[string]struct{}) (*Schedule, error)
 }
 
 func init() {
@@ -44,7 +44,7 @@ func NewInvocationScheduler(policy Policy) *InvocationScheduler {
 	}
 }
 
-func (ws *InvocationScheduler) Evaluate(invocation *types.WorkflowInvocation) (*Schedule, error) {
+func (ws *InvocationScheduler) Evaluate(invocation *types.WorkflowInvocation, sheduled map[string]struct{}) (*Schedule, error) {
 	ctxLog := log.WithFields(logrus.Fields{
 		"invocation": invocation.ID(),
 		"workflow":   invocation.Workflow().ID(),
@@ -55,7 +55,7 @@ func (ws *InvocationScheduler) Evaluate(invocation *types.WorkflowInvocation) (*
 		metricEvalCount.Inc()
 	}()
 
-	schedule, err := ws.policy.Evaluate(invocation)
+	schedule, err := ws.policy.Evaluate(invocation, sheduled)
 	if err != nil {
 		return nil, err
 	}

@@ -69,6 +69,10 @@ func (ap *Task) Invoke(spec *types.TaskInvocationSpec, opts ...CallOption) (*typ
 	if err != nil {
 		return nil, err
 	}
+	err = ap.es.Append(event)
+	if err != nil {
+		return nil, err
+	}
 
 	fnResult, err := ap.runtime[spec.FnRef.Runtime].Invoke(spec, fnenv.WithContext(cfg.ctx),
 		fnenv.AwaitWorkflow(cfg.awaitWorkflow))

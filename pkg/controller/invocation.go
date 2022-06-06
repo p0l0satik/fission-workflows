@@ -17,7 +17,6 @@ import (
 	"github.com/fission/fission-workflows/pkg/types"
 	"github.com/fission/fission-workflows/pkg/types/typedvalues"
 	"github.com/fission/fission-workflows/pkg/types/typedvalues/controlflow"
-	"github.com/fission/fission-workflows/pkg/util"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/opentracing/opentracing-go"
 	"github.com/sirupsen/logrus"
@@ -39,8 +38,8 @@ type InvocationController struct {
 	span          opentracing.Span
 	logger        *logrus.Entry
 	startedTasks  map[string]struct{}
-
-	errorCount int
+	sheduledTasks map[string]struct{}
+	errorCount    int
 }
 
 func NewInvocationController(invocationID string, executor *executor.LocalExecutor, invocationAPI *api.Invocation,
@@ -57,6 +56,7 @@ func NewInvocationController(invocationID string, executor *executor.LocalExecut
 		span:          span,
 		logger:        logger,
 		startedTasks:  map[string]struct{}{},
+		sheduledTasks: map[string]struct{}{},
 	}
 }
 
@@ -87,17 +87,17 @@ func (c *InvocationController) Eval(ctx context.Context, processValue *ctrl.Even
 	}
 
 	// Do not evaluate as long as there still tasks to be executed
-	if activeTaskCount := c.executor.GetGroupTasks(invocation.ID()); activeTaskCount > 0 {
-		return ctrl.Err{Err: fmt.Errorf("invocation still has %d open task(s) to be executed", activeTaskCount)}
-	}
+	// if activeTaskCount := c.executor.GetGroupTasks(invocation.ID()); activeTaskCount > 0 {
+	// 	return ctrl.Err{Err: fmt.Errorf("invocation still has %d open task(s) to be executed", activeTaskCount)}
+	// }
 
 	// To avoid scheduling tasks that are being processed, ensure that all tasks that were successfully submitted have
 	// finished before reevaluating.
-	for taskID := range c.startedTasks {
-		if taskRun, ok := invocation.TaskInvocation(taskID); !ok || !taskRun.GetStatus().Finished() {
-			return ctrl.Success{}
-		}
-	}
+	// for taskID := range c.startedTasks {
+	// 	if taskRun, ok := invocation.TaskInvocation(taskID); !ok || !taskRun.GetStatus().Finished() {
+	// 		return ctrl.Success{}
+	// 	}
+	// }
 
 	// Check if the invocation is not in a terminal state
 	if invocation.GetStatus().Finished() {
@@ -172,7 +172,7 @@ func (c *InvocationController) Eval(ctx context.Context, processValue *ctrl.Even
 	}
 
 	// Defer the heuristic part of the evaluation to the scheduler.
-	schedule, err := c.scheduler.Evaluate(invocation)
+	schedule, err := c.scheduler.Evaluate(invocation, c.sheduledTasks)
 	if err != nil {
 		return ctrl.Err{Err: err}
 	}
@@ -204,6 +204,10 @@ func (c *InvocationController) Eval(ctx context.Context, processValue *ctrl.Even
 				return c.taskAPI.Prepare(taskRunSpec, action.GetExpectedAtTime())
 			},
 		})
+	}
+
+	for _, action := range schedule.GetRunTasks() {
+		c.sheduledTasks[action.TaskID] = struct{}{}
 	}
 
 	// Execute the tasks listed in the schedule.
@@ -288,7 +292,7 @@ func (c *InvocationController) execTask(invocation *types.WorkflowInvocation, ta
 		if err != nil {
 			log.Errorf("Failed to format inputs for debugging: %v", err)
 		} else {
-			log.Debugf("Using inputs: %v", i)
+			log.Infof("Using inputs: %v", i)
 		}
 	}
 
@@ -302,6 +306,7 @@ func (c *InvocationController) execTask(invocation *types.WorkflowInvocation, ta
 	}
 	ctx = opentracing.ContextWithSpan(ctx, span)
 
+	logrus.Warnf("STARTING a task!")
 	// Invoke the task
 	updated, err := c.taskAPI.Invoke(taskRunSpec, api.WithContext(ctx), api.AwaitWorklow(awaitWorkflowMaxRuntime),
 		api.PostTransformer(func(ti *types.TaskInvocation) error {
@@ -311,7 +316,7 @@ func (c *InvocationController) execTask(invocation *types.WorkflowInvocation, ta
 		span.LogKV("error", err)
 		return err
 	}
-
+	delete(c.sheduledTasks, taskID)
 	// Post-execution debugging
 	span.SetTag("status", updated.GetStatus().GetStatus().String())
 	if !updated.GetStatus().Successful() {
@@ -357,14 +362,14 @@ func (c *InvocationController) resolveInputs(invocation *types.WorkflowInvocatio
 			return nil, fmt.Errorf("failed to resolve input field %v: %v", input.Key, err)
 		}
 		resolvedInputs[input.Key] = resolvedInput
-		if input.Val.ValueType() == typedvalues.TypeExpression {
-			log.Infof("Input field resolved '%v': %v -> %v", input.Key,
-				util.Truncate(typedvalues.MustUnwrap(input.Val), 100),
-				util.Truncate(typedvalues.MustUnwrap(resolvedInput), 100))
-		} else {
-			log.Infof("Input field loaded '%v': %v", input.Key,
-				util.Truncate(typedvalues.MustUnwrap(resolvedInput), 100))
-		}
+		// if input.Val.ValueType() == typedvalues.TypeExpression {
+		// 	log.Infof("Input field resolved '%v': %v -> %v", input.Key,
+		// 		util.Truncate(typedvalues.MustUnwrap(input.Val), 100),
+		// 		util.Truncate(typedvalues.MustUnwrap(resolvedInput), 100))
+		// } else {
+		// 	log.Infof("Input field loaded '%v': %v", input.Key,
+		// 		util.Truncate(typedvalues.MustUnwrap(resolvedInput), 100))
+		// }
 
 		// Update the scope with the resolved type
 		scope.Tasks[taskID].Inputs[input.Key] = typedvalues.MustUnwrap(resolvedInput)

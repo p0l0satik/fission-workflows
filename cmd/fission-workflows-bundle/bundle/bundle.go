@@ -33,8 +33,8 @@ import (
 	"github.com/fission/fission-workflows/pkg/util/pubsub"
 	"github.com/fission/fission-workflows/pkg/version"
 	"github.com/gorilla/handlers"
-	"github.com/grpc-ecosystem/go-grpc-middleware"
-	"github.com/grpc-ecosystem/go-grpc-prometheus"
+	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
+	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	grpcruntime "github.com/grpc-ecosystem/grpc-gateway/runtime"
 	grpc_opentracing "github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
 	"github.com/opentracing/opentracing-go"
@@ -119,7 +119,7 @@ func Run(ctx context.Context, opts *Options) error {
 	log.WithFields(log.Fields{
 		"version": fmt.Sprintf("%+v", version.VersionInfo()),
 		"config":  fmt.Sprintf("%+v", opts),
-	}).Info("Starting bundle...")
+	}).Info("Starting bundle... v1.0")
 	app := &App{
 		Options: opts,
 		closers: map[string]io.Closer{},

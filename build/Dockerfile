@@ -9,12 +9,12 @@ COPY . .
 
 ENV GO111MODULE=on
 
-RUN if ! $NOBUILD ; then \
-        go mod download \
-        build/build-linux.sh; \
-    else \
-        echo "NOBUILD provided; assuming binaries exist in context."; \
-    fi
+# RUN if ! $NOBUILD ; then \
+#         go mod download \
+#         build/build-linux.sh; \
+#     else \
+#         echo "NOBUILD provided; assuming binaries exist in context."; \
+#     fi
 
 # Bundle image
 FROM scratch

@@ -20,9 +20,10 @@ type HorizonPolicy struct {
 
 func NewHorizonPolicy() *HorizonPolicy {
 	return &HorizonPolicy{}
+
 }
 
-func (p *HorizonPolicy) Evaluate(invocation *types.WorkflowInvocation) (*Schedule, error) {
+func (p *HorizonPolicy) Evaluate(invocation *types.WorkflowInvocation, sheduled map[string]struct{}) (*Schedule, error) {
 	schedule := &Schedule{InvocationId: invocation.ID(), CreatedAt: ptypes.TimestampNow()}
 
 	// If there are failed tasks halt the workflow
@@ -41,8 +42,12 @@ func (p *HorizonPolicy) Evaluate(invocation *types.WorkflowInvocation) (*Schedul
 	openTasks := getOpenTasks(invocation)
 	depGraph := graph.Parse(graph.NewTaskInstanceIterator(openTasks))
 	horizon := graph.Roots(depGraph)
+
 	for _, node := range horizon {
-		schedule.AddRunTask(newRunTaskAction(node.(*graph.TaskInvocationNode).Task().ID()))
+		_, found := sheduled[node.(*graph.TaskInvocationNode).Task().ID()]
+		if !found && node.(*graph.TaskInvocationNode).GetStatus().GetStatus() == types.TaskInvocationStatus_UNKNOWN {
+			schedule.AddRunTask(newRunTaskAction(node.(*graph.TaskInvocationNode).Task().ID()))
+		}
 	}
 	return schedule, nil
 }
@@ -64,7 +69,7 @@ func NewPrewarmAllPolicy(coldstartDuration time.Duration) *PrewarmAllPolicy {
 	return &PrewarmAllPolicy{coldStartDuration: coldstartDuration}
 }
 
-func (p *PrewarmAllPolicy) Evaluate(invocation *types.WorkflowInvocation) (*Schedule, error) {
+func (p *PrewarmAllPolicy) Evaluate(invocation *types.WorkflowInvocation, sheduled map[string]struct{}) (*Schedule, error) {
 	schedule := &Schedule{InvocationId: invocation.ID(), CreatedAt: ptypes.TimestampNow()}
 
 	// If there are failed tasks halt the workflow
@@ -114,7 +119,7 @@ func NewPrewarmHorizonPolicy(coldstartDuration time.Duration) *PrewarmHorizonPol
 	return &PrewarmHorizonPolicy{coldStartDuration: coldstartDuration}
 }
 
-func (p *PrewarmHorizonPolicy) Evaluate(invocation *types.WorkflowInvocation) (*Schedule, error) {
+func (p *PrewarmHorizonPolicy) Evaluate(invocation *types.WorkflowInvocation, sheduled map[string]struct{}) (*Schedule, error) {
 	schedule := &Schedule{InvocationId: invocation.ID(), CreatedAt: ptypes.TimestampNow()}
 
 	// If there are failed tasks halt the workflow
@@ -175,9 +180,11 @@ func getOpenTasks(invocation *types.WorkflowInvocation) map[string]*types.TaskIn
 				},
 			}
 		}
-		if taskRun.GetStatus().GetStatus() == types.TaskInvocationStatus_UNKNOWN {
+		if taskRun.GetStatus().GetStatus() == types.TaskInvocationStatus_UNKNOWN ||
+			taskRun.GetStatus().GetStatus() == types.TaskInvocationStatus_IN_PROGRESS {
 			openTasks[id] = taskRun
 		}
 	}
+
 	return openTasks
 }
